@@ -3,53 +3,52 @@ import cv2
 import numpy as np
 from matplotlib import pyplot as plt
 from utils import traverse_images, cv_show
+from ultralytics import YOLO
 
 # 加载 YOLOv5 模型
-model = yolov5.load('keremberke/yolov5n-license-plate') 
+model = YOLO('yolov8n.pt') 
 
 # 配置 YOLOv5 模型参数
-model.conf = 0.25  # NMS confidence threshold
-model.iou = 0.45  # NMS IoU threshold
-model.agnostic = False  # NMS class-agnostic
-model.multi_label = False  # NMS multiple labels per box
-model.max_det = 1000  # maximum number of detections per image
+#model.conf = 0.25  # NMS confidence threshold
+#model.iou = 0.45  # NMS IoU threshold
+#model.agnostic = False  # NMS class-agnostic
+#model.multi_label = False  # NMS multiple labels per box
+#model.max_det = 1000  # maximum number of detections per image
 
 
 def extract_plate_yolo(image, expand_ratio=0.2):
     """
-    使用 YOLOv5 模型定位车牌并提取颜色，同时对检测框进行扩展
+    使用 YOLOv8 模型定位车牌并提取
     :param image: 输入的原始图像
     :param expand_ratio: 扩展比例，每边扩展的比例
-    :return: 检测到的车牌图像及车牌颜色
+    :return: 检测到的车牌图像
     """
-    # YOLOv5 模型推理
-    results = model(image, size=640)
-    predictions = results.pred[0]
-
+    # YOLOv8 模型推理
+    results = model(image, conf=0.25, iou=0.45)  # 设置置信度和IOU阈值
+    
     # 如果没有检测到任何车牌
-    if len(predictions) == 0:
+    if len(results[0].boxes) == 0:
         return None
 
-    # 获取第一个检测到的车牌边界框（默认置信度最高）
-    box = predictions[0, :4].cpu().numpy().astype(int)  # 转换为整数坐标
-    x1, y1, x2, y2 = expand_bbox(image, box, expand_ratio)
+    # 获取第一个检测到的车牌边界框（置信度最高）
+    boxes = results[0].boxes
+    if len(boxes) == 0:
+        return None
+        
+    # 获取置信度最高的检测框
+    best_box = boxes[0]
+    x1, y1, x2, y2 = best_box.xyxy[0].cpu().numpy().astype(int)
+    
+    # 扩展边界框
+    x1, y1, x2, y2 = expand_bbox(image, [x1, y1, x2, y2], expand_ratio)
     plate_image = image[y1:y2, x1:x2]
-
-    # 提取角点并进行倾斜矫正
-    # plate_image_corrected = correct_skew(plate_image)
-    # plate_image_corrected = locate_license_plate(plate_image)
-
 
     return plate_image
 
 
 def expand_bbox(image, box, scale=0.2):
     """
-    扩展 YOLO 矩形框
-    :param image: 原始图像
-    :param box: YOLO 的矩形框 [x1, y1, x2, y2]
-    :param scale: 扩展比例（每边扩展的比例）
-    :return: 扩展后的矩形框
+    扩展矩形框（保持不变）
     """
     height, width = image.shape[:2]
     x1, y1, x2, y2 = map(int, box)
@@ -300,8 +299,12 @@ if __name__ == "__main__":
             print("未检测到车牌")'''
 
 if __name__ == '__main__':
+    # 测试代码
     origin_image = cv2.imread("../test_images/030.jpg")
     plate_image = extract_plate_yolo(origin_image)
-    print(plate_image == None)
-    # cv_show("plate", plate_image)
-    cv2.imwrite(".tmp/plate.jpg", plate_image)
+    if plate_image is not None:
+        cv2.imshow("plate", plate_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+    else:
+        print("未检测到车牌")
